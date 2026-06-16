@@ -38,7 +38,7 @@
             <nav class="-mb-px flex space-x-8">
                 <button onclick="switchTab('create')" id="tab-create" class="tab-active py-4 px-1">🚀 发行代币</button>
                 <button onclick="switchTab('mine')" id="tab-mine" class="tab-inactive py-4 px-1">⛏️ 地址挖矿 (4个8)</button>
-                <button onclick="switchTab('list')" id="tab-list" class="tab-inactive py-4 px-1">📜 代币列表</button>
+                <button onclick="switchTab('list')" id="tab-list" class="tab-inactive py-4 px-1">📜 代币列表与预售</button>
             </nav>
         </div>
 
@@ -167,12 +167,12 @@
                         <div><span class="text-green-200">Salt:</span> <span id="resultSalt" class="break-all"></span></div>
                         <div><span class="text-green-200">预测地址:</span> <span id="resultAddress" class="text-yellow-300 font-bold"></span></div>
                     </div>
-                    <button onclick="useMinedSalt()" class="mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded transition">使用此 Salt 并前往注册</button>
+                    <button onclick="useMinedSalt()" class="mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded transition">使用此 Salt</button>
                 </div>
 
                 <div class="mt-6 bg-red-500/20 border border-red-400 rounded-lg p-4 text-sm">
                     <p class="font-bold text-red-200">⚠️ 重要提示：</p>
-                    <p class="text-red-100 mt-1">调用链上注册 (registerSalt) <strong>需要您的钱包地址已被 Factory Owner 加入矿工白名单</strong>。如果您未被授权，交易将会失败 (Revert: NOT_MINER)。</p>
+                    <p class="text-red-100 mt-1">调用链上注册 (registerSalt) <strong>需要您的钱包地址已被 Factory Owner 加入矿工白名单</strong>。如果未注册直接使用，将作为普通 Salt 免费部署。</p>
                 </div>
             </div>
         </div>
@@ -180,24 +180,26 @@
         <!-- Tab 3: Token List -->
         <div id="view-list" class="hidden space-y-6">
             <div class="flex justify-between items-center">
-                <h2 class="text-xl font-bold text-gray-900">已部署的代币列表</h2>
-                <button onclick="loadTokenList()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-medium transition">刷新列表</button>
+                <h2 class="text-xl font-bold text-gray-900">代币列表与预售大厅</h2>
+                <button onclick="loadTokenList()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-medium transition">🔄 刷新列表</button>
             </div>
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">编号</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Token 地址</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sale 地址</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">创建者</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tokenListBody" class="bg-white divide-y divide-gray-200">
-                        <tr><td colspan="5" class="px-6 py-8 text-center text-gray-500">点击刷新加载数据</td></tr>
-                    </tbody>
-                </table>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">编号</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Token / Sale</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-1/4">预售进度</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tokenListBody" class="bg-white divide-y divide-gray-200">
+                            <tr><td colspan="5" class="px-6 py-8 text-center text-gray-500">点击刷新加载数据</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </main>
@@ -207,7 +209,6 @@
     </div>
 
     <script>
-        // 部署好的合约地址 (BSC Mainnet)
         const FACTORY_ADDR = "0x77d6DE5299d7F9F0663E857CF9e4852a2e0b6B8E";
         const DEPLOYER_ADDR = "0xf490B297CF882ea0387B039AacC106CE619Fea43";
         const VANITY_ADDR = "0x6159ad7fFD219Ea1582f468F7a78C9a676F834A5";
@@ -224,6 +225,19 @@
             "function deploymentsLength() view returns (uint256)",
             "function deployments(uint256) view returns (address token, address sale, address dividendTracker, address creator)",
             "function createToken(bytes32 salt, tuple(string name, string symbol, uint256 totalSupply, uint256 mintFeePerUnit, bool oneAddressOneBuy, uint256 devShareBnb, bool whitelistEnabled, address[] whitelist, uint16 burnTaxBps, uint16 marketingTaxBps, uint16 dividendTaxBps, uint16 liquidityTaxBps, address marketingWallet, uint8 taxAssetType, address dividendToken, uint256 minBalanceForDividend, uint256 launchTargetBnb, uint256 swapThreshold) p) payable returns (address, address, address)"
+        ];
+
+        const SALE_ABI = [
+            "function state() view returns (uint8)",
+            "function totalRaised() view returns (uint256)",
+            "function devShareBnb() view returns (uint256)",
+            "function launchTargetBnb() view returns (uint256)",
+            "function mintFeePerUnit() view returns (uint256)",
+            "function contributions(address) view returns (uint256)",
+            "function claimed(address) view returns (bool)",
+            "function buy() payable",
+            "function launch() external",
+            "function claim() external"
         ];
 
         const VANITY_ABI = [
@@ -327,24 +341,7 @@
             if (foundSalt) {
                 document.getElementById('deploySalt').value = foundSalt;
                 switchTab('create');
-                showToast("Salt 已自动填入，请前往注册或直接使用");
-            }
-        }
-
-        async function registerMinedSalt() {
-            if (!foundSalt || !signer) return;
-            try {
-                showToast("正在发送注册交易...");
-                const vanity = new ethers.Contract(VANITY_ADDR, VANITY_ABI, signer);
-                const tx = await vanity.registerSalt(foundSalt, userAddress);
-                showToast("交易已发送，等待确认...");
-                await tx.wait();
-                showToast("Salt 注册成功！");
-                foundSalt = null;
-                document.getElementById('mineResult').classList.add('hidden');
-            } catch (err) {
-                console.error(err);
-                showToast("注册失败: " + (err.reason || err.message), true);
+                showToast("Salt 已自动填入发行页面");
             }
         }
 
@@ -416,6 +413,7 @@
                     const parsed = factory.interface.parseLog(event);
                     showToast(`代币创建成功！地址: ${parsed.args.token}`);
                     document.getElementById('deploySalt').value = "";
+                    switchTab('list');
                 } else {
                     showToast("交易成功，但未找到创建事件");
                 }
@@ -429,9 +427,9 @@
         }
 
         async function loadTokenList() {
-            if (!provider) return;
+            if (!provider) { showToast("请先连接钱包", true); return; }
             const tbody = document.getElementById('tokenListBody');
-            tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-gray-500"><span class="loading-spinner"></span> 正在加载...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-500"><span class="loading-spinner"></span> 正在加载链上数据...</td></tr>';
             
             try {
                 const factory = new ethers.Contract(FACTORY_ADDR, FACTORY_ABI, provider);
@@ -443,19 +441,67 @@
                 }
 
                 let html = '';
-                const limit = length > 20n ? 20n : length;
+                const limit = length > 15n ? 15n : length; // 最多加载最近 15 个，防止 RPC 超时
+                
                 for (let i = length - 1n; i >= length - limit; i--) {
                     const dep = await factory.deployments(i);
                     const idx = Number(i);
+                    
+                    const saleContract = new ethers.Contract(dep.sale, SALE_ABI, provider);
+                    const state = await saleContract.state();
+                    const totalRaised = await saleContract.totalRaised();
+                    const devShareBnb = await saleContract.devShareBnb();
+                    const launchTarget = await saleContract.launchTargetBnb();
+                    const mintFee = await saleContract.mintFeePerUnit();
+                    
+                    const currentTotal = totalRaised + devShareBnb;
+                    const progress = launchTarget > 0n ? (currentTotal * 100n / launchTarget) : 0n;
+                    const progressNum = Number(progress);
+                    const isLaunched = state === 1n;
+                    
+                    let statusBadge = isLaunched 
+                        ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">🔵 已发射</span>`
+                        : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">🟢 预售中</span>`;
+
+                    let actionBtn = '';
+                    if (userAddress) {
+                        const userContr = await saleContract.contributions(userAddress);
+                        const hasClaimed = await saleContract.claimed(userAddress);
+                        const saleSigner = new ethers.Contract(dep.sale, SALE_ABI, signer);
+
+                        if (!isLaunched) {
+                            if (currentTotal >= launchTarget) {
+                                actionBtn = `<button onclick="launchSale('${dep.sale}')" class="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-2 px-3 rounded transition">🚀 发射 (Launch)</button>`;
+                            } else {
+                                const feeStr = ethers.formatEther(mintFee);
+                                actionBtn = `<button onclick="buyPresale('${dep.sale}', '${mintFee}')" class="w-full bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 px-3 rounded transition">💰 参与预售 (${feeStr} BNB)</button>`;
+                            }
+                        } else {
+                            if (userContr > 0n && !hasClaimed) {
+                                actionBtn = `<button onclick="claimToken('${dep.sale}')" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white text-xs font-bold py-2 px-3 rounded transition">🎁 领取代币</button>`;
+                            } else {
+                                actionBtn = `<span class="text-xs text-gray-400">已结束</span>`;
+                            }
+                        }
+                    } else {
+                        actionBtn = `<span class="text-xs text-gray-400">连接钱包操作</span>`;
+                    }
+
                     html += `
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${idx}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-mono cursor-pointer hover:underline" onclick="window.open('https://bscscan.com/address/${dep.token}', '_blank')">${dep.token.slice(0,6)}...${dep.token.slice(-4)}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">${dep.sale.slice(0,6)}...${dep.sale.slice(-4)}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">${dep.creator.slice(0,6)}...${dep.creator.slice(-4)}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                <a href="https://bscscan.com/address/${dep.token}" target="_blank" class="text-blue-600 hover:text-blue-900">查看</a>
+                        <tr class="hover:bg-gray-50 transition">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${idx}</td>
+                            <td class="px-4 py-4">
+                                <div class="text-sm font-mono text-blue-600 cursor-pointer hover:underline" onclick="window.open('https://bscscan.com/address/${dep.token}', '_blank')">${dep.token.slice(0,6)}...${dep.token.slice(-4)}</div>
+                                <div class="text-xs font-mono text-gray-500">Sale: ${dep.sale.slice(0,6)}...${dep.sale.slice(-4)}</div>
                             </td>
+                            <td class="px-4 py-4 align-middle">
+                                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1">
+                                    <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${Math.min(progressNum, 100)}%"></div>
+                                </div>
+                                <div class="text-xs text-gray-600 text-right">${ethers.formatEther(currentTotal)} / ${ethers.formatEther(launchTarget)} BNB</div>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap">${statusBadge}</td>
+                            <td class="px-4 py-4 whitespace-nowrap">${actionBtn}</td>
                         </tr>
                     `;
                 }
@@ -463,6 +509,55 @@
             } catch (err) {
                 console.error(err);
                 tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-red-500">加载失败，请检查网络或稍后重试</td></tr>';
+            }
+        }
+
+        async function buyPresale(saleAddr, mintFeeWei) {
+            if (!signer) return;
+            try {
+                showToast("正在发送购买交易，请在钱包中确认...");
+                const sale = new ethers.Contract(saleAddr, SALE_ABI, signer);
+                const tx = await sale.buy({ value: mintFeeWei });
+                showToast("交易已上链，等待确认...");
+                await tx.wait();
+                showToast("购买成功！");
+                loadTokenList();
+            } catch (err) {
+                console.error(err);
+                showToast("购买失败: " + (err.reason || err.message), true);
+            }
+        }
+
+        async function launchSale(saleAddr) {
+            if (!signer) return;
+            if (!confirm("确定要发射此代币吗？这将在 PancakeSwap 添加流动性并销毁 LP。")) return;
+            try {
+                showToast("正在发送发射交易，请在钱包中确认...");
+                const sale = new ethers.Contract(saleAddr, SALE_ABI, signer);
+                const tx = await sale.launch();
+                showToast("交易已上链，等待确认...");
+                await tx.wait();
+                showToast("发射成功！流动性已添加并销毁。");
+                loadTokenList();
+            } catch (err) {
+                console.error(err);
+                showToast("发射失败: " + (err.reason || err.message), true);
+            }
+        }
+
+        async function claimToken(saleAddr) {
+            if (!signer) return;
+            try {
+                showToast("正在发送领取交易，请在钱包中确认...");
+                const sale = new ethers.Contract(saleAddr, SALE_ABI, signer);
+                const tx = await sale.claim();
+                showToast("交易已上链，等待确认...");
+                await tx.wait();
+                showToast("代币领取成功！");
+                loadTokenList();
+            } catch (err) {
+                console.error(err);
+                showToast("领取失败: " + (err.reason || err.message), true);
             }
         }
     </script>
