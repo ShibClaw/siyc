@@ -220,6 +220,7 @@
         let foundSalt = null;
 
         const FACTORY_ABI = [
+            "function creationFee() view returns (uint256)",
             "function deploymentsLength() view returns (uint256)",
             "function deployments(uint256) view returns (address token, address sale, address dividendTracker, address creator)",
             "function createToken(bytes32 salt, tuple(string name, string symbol, uint256 totalSupply, uint256 mintFeePerUnit, bool oneAddressOneBuy, uint256 devShareBnb, bool whitelistEnabled, address[] whitelist, uint16 burnTaxBps, uint16 marketingTaxBps, uint16 dividendTaxBps, uint16 liquidityTaxBps, address marketingWallet, uint8 taxAssetType, address dividendToken, uint256 minBalanceForDividend, uint256 launchTargetBnb, uint256 swapThreshold) p) payable returns (address, address, address)"
