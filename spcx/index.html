@@ -468,6 +468,7 @@
                     if (userAddress) {
                         const userContr = await saleContract.contributions(userAddress);
                         const hasClaimed = await saleContract.claimed(userAddress);
+                        const feeStr = ethers.formatEther(mintFee);
 
                         if (!isLaunched) {
                             if (userContr > 0n) {
@@ -477,8 +478,14 @@
                             if (currentTotal >= launchTarget) {
                                 actionBtn += `<button onclick="launchSale('${dep.sale}')" class="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-2 px-3 rounded transition">🚀 发射代币</button>`;
                             } else if (userContr === 0n) {
-                                const feeStr = ethers.formatEther(mintFee);
-                                actionBtn += `<button onclick="buyPresale('${dep.sale}', '${mintFee}')" class="w-full bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 px-3 rounded transition">💰 参与预售 (${feeStr} BNB)</button>`;
+                                actionBtn += `
+                                    <div class="flex gap-1 mb-1">
+                                        <input type="number" id="buyQty_${idx}" class="w-16 border border-gray-300 rounded px-2 py-1.5 text-xs text-center" value="1" min="1" max="100">
+                                        <span class="text-xs flex items-center text-gray-500">份</span>
+                                    </div>
+                                    <button onclick="batchBuyPresale('${dep.sale}', '${mintFee}', ${idx})" class="w-full bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-1.5 px-3 rounded transition">💰 批量参与预售</button>
+                                    <p class="text-[10px] text-gray-400 mt-1 text-center">每份 ${feeStr} BNB</p>
+                                `;
                             }
                         } else {
                             if (userContr > 0n && !hasClaimed) {
@@ -516,23 +523,50 @@
             }
         }
 
-        async function buyPresale(saleAddr, mintFeeWei) {
+        async function batchBuyPresale(saleAddr, mintFeeWei, idx) {
             if (!signer) return;
+            const qtyInput = document.getElementById(`buyQty_${idx}`);
+            const qty = parseInt(qtyInput.value);
+            if (!qty || qty < 1) {
+                showToast("请输入有效的购买份数", true);
+                return;
+            }
+
+            const btn = event.target;
+            const originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = "处理中...";
+
             try {
-                showToast("正在发送购买交易，请在钱包中确认...");
                 const sale = new ethers.Contract(saleAddr, SALE_ABI, signer);
-                const tx = await sale.buy({ value: mintFeeWei });
-                showToast("交易已上链，等待确认...");
-                await tx.wait();
-                showToast("购买成功！");
+                let successCount = 0;
+
+                for (let i = 0; i < qty; i++) {
+                    showToast(`正在预检并购买第 ${i + 1}/${qty} 份...`);
+                    
+                    // 本地预检
+                    await sale.buy.staticCall({ value: mintFeeWei });
+                    
+                    // 发送交易
+                    const tx = await sale.buy({ value: mintFeeWei });
+                    await tx.wait();
+                    successCount++;
+                }
+
+                showToast(`🎉 成功批量购买 ${successCount} 份！`);
                 loadTokenList();
             } catch (err) {
                 console.error(err);
-                let errMsg = err.reason || err.message;
-                if (errMsg.includes("ALREADY_BOUGHT")) errMsg = "您已参与过，且该代币限制了单地址仅能购买一次。";
-                else if (errMsg.includes("NOT_WHITELISTED")) errMsg = "您的地址不在该代币的白名单中。";
-                else if (errMsg.includes("TARGET_FILLED")) errMsg = "预售目标已满，请等待发射或退款。";
-                showToast("购买失败: " + errMsg, true);
+                let errMsg = err.reason || err.message || "未知错误";
+                if (errMsg.includes("ALREADY_BOUGHT")) errMsg = "该地址已参与过，且此代币限制了【单地址仅能购买一次】。";
+                else if (errMsg.includes("NOT_WHITELISTED")) errMsg = "该地址不在代币的白名单中。";
+                else if (errMsg.includes("TARGET_FILLED")) errMsg = "预售目标已满，剩余额度不足以支付单次购买费用。";
+                else if (errMsg.includes("NOT_PENDING")) errMsg = "预售已结束或已发射，无法购买。";
+                
+                showToast(`购买在第 ${successCount + 1} 份时失败: ${errMsg}`, true);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = originalText;
             }
         }
 
@@ -540,8 +574,11 @@
             if (!signer) return;
             if (!confirm("确定要申请退款吗？这将退回您投入的全部 BNB，并取消您的参与资格。")) return;
             try {
-                showToast("正在发送退款交易，请在钱包中确认...");
+                showToast("正在预检退款条件...");
                 const sale = new ethers.Contract(saleAddr, SALE_ABI, signer);
+                await sale.refund.staticCall();
+                
+                showToast("预检通过，正在发送退款交易...");
                 const tx = await sale.refund();
                 showToast("交易已上链，等待确认...");
                 await tx.wait();
@@ -549,10 +586,10 @@
                 loadTokenList();
             } catch (err) {
                 console.error(err);
-                let errMsg = err.reason || err.message;
+                let errMsg = err.reason || err.message || "未知错误";
                 if (errMsg.includes("NOT_PENDING")) errMsg = "预售已结束或已发射，无法退款。";
                 else if (errMsg.includes("NOTHING_TO_REFUND")) errMsg = "您没有可退款的金额。";
-                showToast("退款失败: " + errMsg, true);
+                showToast("退款被拒绝: " + errMsg, true);
             }
         }
 
