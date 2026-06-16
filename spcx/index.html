@@ -237,7 +237,8 @@
             "function claimed(address) view returns (bool)",
             "function buy() payable",
             "function launch() external",
-            "function claim() external"
+            "function claim() external",
+            "function refund() external"
         ];
 
         const VANITY_ABI = [
@@ -441,7 +442,7 @@
                 }
 
                 let html = '';
-                const limit = length > 15n ? 15n : length; // 最多加载最近 15 个，防止 RPC 超时
+                const limit = length > 15n ? 15n : length;
                 
                 for (let i = length - 1n; i >= length - limit; i--) {
                     const dep = await factory.deployments(i);
@@ -467,14 +468,17 @@
                     if (userAddress) {
                         const userContr = await saleContract.contributions(userAddress);
                         const hasClaimed = await saleContract.claimed(userAddress);
-                        const saleSigner = new ethers.Contract(dep.sale, SALE_ABI, signer);
 
                         if (!isLaunched) {
+                            if (userContr > 0n) {
+                                actionBtn = `<button onclick="refundPresale('${dep.sale}')" class="w-full bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold py-2 px-3 rounded transition mb-2">💸 申请退款</button>`;
+                            }
+                            
                             if (currentTotal >= launchTarget) {
-                                actionBtn = `<button onclick="launchSale('${dep.sale}')" class="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-2 px-3 rounded transition">🚀 发射 (Launch)</button>`;
-                            } else {
+                                actionBtn += `<button onclick="launchSale('${dep.sale}')" class="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-2 px-3 rounded transition">🚀 发射代币</button>`;
+                            } else if (userContr === 0n) {
                                 const feeStr = ethers.formatEther(mintFee);
-                                actionBtn = `<button onclick="buyPresale('${dep.sale}', '${mintFee}')" class="w-full bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 px-3 rounded transition">💰 参与预售 (${feeStr} BNB)</button>`;
+                                actionBtn += `<button onclick="buyPresale('${dep.sale}', '${mintFee}')" class="w-full bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 px-3 rounded transition">💰 参与预售 (${feeStr} BNB)</button>`;
                             }
                         } else {
                             if (userContr > 0n && !hasClaimed) {
@@ -524,13 +528,37 @@
                 loadTokenList();
             } catch (err) {
                 console.error(err);
-                showToast("购买失败: " + (err.reason || err.message), true);
+                let errMsg = err.reason || err.message;
+                if (errMsg.includes("ALREADY_BOUGHT")) errMsg = "您已参与过，且该代币限制了单地址仅能购买一次。";
+                else if (errMsg.includes("NOT_WHITELISTED")) errMsg = "您的地址不在该代币的白名单中。";
+                else if (errMsg.includes("TARGET_FILLED")) errMsg = "预售目标已满，请等待发射或退款。";
+                showToast("购买失败: " + errMsg, true);
+            }
+        }
+
+        async function refundPresale(saleAddr) {
+            if (!signer) return;
+            if (!confirm("确定要申请退款吗？这将退回您投入的全部 BNB，并取消您的参与资格。")) return;
+            try {
+                showToast("正在发送退款交易，请在钱包中确认...");
+                const sale = new ethers.Contract(saleAddr, SALE_ABI, signer);
+                const tx = await sale.refund();
+                showToast("交易已上链，等待确认...");
+                await tx.wait();
+                showToast("退款成功！BNB 已退回您的钱包。");
+                loadTokenList();
+            } catch (err) {
+                console.error(err);
+                let errMsg = err.reason || err.message;
+                if (errMsg.includes("NOT_PENDING")) errMsg = "预售已结束或已发射，无法退款。";
+                else if (errMsg.includes("NOTHING_TO_REFUND")) errMsg = "您没有可退款的金额。";
+                showToast("退款失败: " + errMsg, true);
             }
         }
 
         async function launchSale(saleAddr) {
             if (!signer) return;
-            if (!confirm("确定要发射此代币吗？这将在 PancakeSwap 添加流动性并销毁 LP。")) return;
+            if (!confirm("确定要发射此代币吗？这将在 PancakeSwap 添加流动性并永久销毁 LP。")) return;
             try {
                 showToast("正在发送发射交易，请在钱包中确认...");
                 const sale = new ethers.Contract(saleAddr, SALE_ABI, signer);
